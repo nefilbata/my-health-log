@@ -592,6 +592,55 @@ input[type=range]::-webkit-slider-thumb {
 }
 .cal-legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--ink3); }
 .cal-legend-dot { width: 6px; height: 6px; border-radius: 50%; }
+
+/* ── 今日小结 ── */
+.summary-card {
+  background: linear-gradient(135deg, #fff8f0, #fdf3e8);
+  border: 1.5px solid rgba(193,122,74,0.2);
+  border-radius: var(--r20); padding: 18px;
+  margin-bottom: 12px; position: relative; overflow: hidden;
+}
+.summary-card::before {
+  content: '✦'; position: absolute;
+  right: 14px; top: 12px;
+  font-size: 18px; color: rgba(193,122,74,0.2);
+}
+.summary-label {
+  font-size: 10px; color: var(--warm);
+  letter-spacing: 0.15em; margin-bottom: 10px;
+  display: flex; align-items: center; gap: 6px;
+}
+.summary-label::before { content: ''; width: 16px; height: 1.5px; background: var(--warm); }
+.summary-text {
+  font-family: 'Source Han Serif SC', serif;
+  font-size: 14px; color: var(--ink2);
+  line-height: 2; white-space: pre-wrap;
+}
+.summary-date { font-size: 11px; color: var(--ink4); margin-top: 10px; text-align: right; }
+.summary-generating {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; color: var(--ink3); padding: 8px 0;
+}
+.summary-dots span {
+  display: inline-block; width: 5px; height: 5px; border-radius: 50%;
+  background: var(--warm); margin: 0 2px;
+  animation: dotBounce 1.2s infinite;
+}
+.summary-dots span:nth-child(2) { animation-delay: 0.2s; }
+.summary-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes dotBounce {
+  0%,80%,100% { transform: scale(0.7); opacity: 0.5; }
+  40% { transform: scale(1); opacity: 1; }
+}
+.gen-btn {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  width: 100%; padding: 11px; border-radius: var(--r12);
+  border: 1.5px dashed rgba(193,122,74,0.4);
+  background: var(--warm-pale); color: var(--warm);
+  cursor: pointer; font-family: inherit; font-size: 13px;
+  transition: all 0.18s; margin-top: 4px;
+}
+.gen-btn:hover { border-color: var(--warm); background: #fde8d0; }
 </style>
 </head>
 <body>
@@ -624,6 +673,9 @@ input[type=range]::-webkit-slider-thumb {
       </div>
     </div>
   </div>
+
+  <!-- 今日小结 -->
+  <div id="summaryArea" style="margin:0 0 12px;"></div>
 
   <!-- 快速状态 -->
   <div class="status-grid" id="statusGrid" style="margin:0 0 12px;">
@@ -1450,8 +1502,107 @@ async function loadSkin() {
   `).join('');
 }
 
+
+// ── 今日小结 ──
+async function loadSummary() {
+  const el = document.getElementById('summaryArea');
+  const { data } = await sb.from('daily_summaries').select('*').eq('date', todayStr).single();
+  if (data) {
+    el.innerHTML = `
+      <div class="summary-card">
+        <div class="summary-label">今日小结</div>
+        <div class="summary-text">${data.summary}</div>
+        <div class="summary-date">由 Claude 生成 · ${data.created_at ? data.created_at.slice(0,10) : todayStr}</div>
+      </div>
+    `;
+  } else {
+    // 检查今天是否有记录
+    const { data: log } = await sb.from('daily_logs').select('id').eq('date', todayStr).single();
+    if (log) {
+      el.innerHTML = `<button class="gen-btn" onclick="generateSummary()">✦ 让 Claude 读读今天的记录，给你写一段话</button>`;
+    } else {
+      el.innerHTML = '';
+    }
+  }
+}
+
+async function generateSummary() {
+  const el = document.getElementById('summaryArea');
+  el.innerHTML = `<div class="summary-card"><div class="summary-generating"><div class="summary-dots"><span></span><span></span><span></span></div>Claude 正在读你今天的记录…</div></div>`;
+
+  // 读今日数据
+  const { data: log } = await sb.from('daily_logs').select('*').eq('date', todayStr).single();
+  const { data: exLogs } = await sb.from('exercise_logs').select('*').eq('date', todayStr);
+  const { data: skinLog } = await sb.from('skincare_logs').select('*').eq('date', todayStr).order('created_at', {ascending: false}).limit(1);
+
+  if (!log) { el.innerHTML = ''; return; }
+
+  // 整理数据
+  const parts = [];
+  if (log.mood_word) parts.push(`情绪：${log.mood_word}`);
+  if (log.mood_note) parts.push(`心情备注：${log.mood_note}`);
+  if (log.negative_thoughts) parts.push(`负面想法：${log.negative_thoughts}`);
+  if (log.sleep_quality) parts.push(`睡眠质量：${log.sleep_quality}星`);
+  if (log.sleep_start && log.sleep_end) parts.push(`睡眠时段：${log.sleep_start}~${log.sleep_end}`);
+  if (log.dream_note) parts.push(`梦境：${log.dream_note}`);
+  if (log.nap) parts.push(`有午睡${log.nap_start ? '（'+log.nap_start+'~'+log.nap_end+'）' : ''}`);
+  parts.push(`饮水达标：${log.water_ok ? '是' : '否'}`);
+  parts.push(`排便正常：${log.bowel_ok ? '是'+(log.bowel_time?'，'+log.bowel_time:'') : '否'}`);
+  if (log.period) parts.push(`生理期第${log.period_day||'?'}天`);
+  if (log.energy_level) parts.push(`精力水平：${log.energy_level}/5`);
+  if (exLogs && exLogs.length > 0) {
+    parts.push(`运动：${exLogs.map(e => e.exercise_type + (e.duration_minutes ? ' '+e.duration_minutes+'分钟' : '')).join('、')}`);
+  }
+  if (skinLog && skinLog.length > 0) {
+    parts.push(`皮肤状态：${skinLog[0].skin_condition || '已记录'}`);
+  }
+
+  const dataStr = parts.join('
+');
+  const prompt = `这是我今天（${todayStr}）的健康日记记录：
+
+${dataStr}
+
+请你作为一个温柔、细心、真诚的朋友，读完我今天的记录之后，给我写一段话。
+要求：
+- 要有温度，像真正了解我的朋友在说话，不要像机器人
+- 关注我今天的情绪和身体状态，给我一些真实的回应
+- 如果有需要关心的地方（比如负面情绪、睡眠不好），温柔地提到
+- 如果今天有做得好的地方，真诚地肯定我
+- 100-150字左右，不要太长
+- 用中文，语气自然亲切，不要说教`;
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const data = await response.json();
+    const summary = data.content?.[0]?.text || '今天也辛苦了，好好休息。';
+
+    // 存入数据库
+    await sb.from('daily_summaries').upsert({ date: todayStr, summary }, { onConflict: 'date' });
+
+    el.innerHTML = `
+      <div class="summary-card">
+        <div class="summary-label">今日小结</div>
+        <div class="summary-text">${summary}</div>
+        <div class="summary-date">由 Claude 生成 · ${todayStr}</div>
+      </div>
+    `;
+  } catch(e) {
+    el.innerHTML = `<button class="gen-btn" onclick="generateSummary()">生成失败，点击重试</button>`;
+  }
+}
+
 // ── 加载首页 ──
 async function loadHome() {
+  loadSummary();
   // 今日记录
   const { data: log } = await sb.from('daily_logs').select('*').eq('date', todayStr).single();
   if (log) {
