@@ -1557,8 +1557,7 @@ async function generateSummary() {
     parts.push(`皮肤状态：${skinLog[0].skin_condition || '已记录'}`);
   }
 
-  const dataStr = parts.join('
-');
+  const dataStr = parts.join('\n');
   const prompt = `这是我今天（${todayStr}）的健康日记记录：
 
 ${dataStr}
