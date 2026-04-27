@@ -641,11 +641,81 @@ input[type=range]::-webkit-slider-thumb {
   transition: all 0.18s; margin-top: 4px;
 }
 .gen-btn:hover { border-color: var(--warm); background: #fde8d0; }
+/* ── 登录页 ── */
+.auth-screen {
+  position: fixed; inset: 0; z-index: 9999;
+  background: var(--bg);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 24px;
+}
+.auth-card {
+  width: 100%; max-width: 360px;
+  background: var(--card); border-radius: var(--r24);
+  border: 1px solid var(--border);
+  padding: 32px 24px;
+  box-shadow: 0 4px 20px rgba(61,43,31,0.06);
+}
+.auth-logo {
+  font-family: 'Source Han Serif SC', serif;
+  font-size: 22px; color: var(--ink);
+  text-align: center; margin-bottom: 6px;
+}
+.auth-sub {
+  font-size: 12px; color: var(--ink3);
+  text-align: center; margin-bottom: 26px;
+}
+.auth-input {
+  width: 100%; padding: 12px 14px;
+  border: 1.5px solid var(--border); border-radius: var(--r12);
+  background: var(--bg); font-size: 14px; color: var(--ink);
+  margin-bottom: 12px; box-sizing: border-box;
+  font-family: inherit;
+}
+.auth-input:focus {
+  outline: none; border-color: var(--warm);
+}
+.auth-btn {
+  width: 100%; padding: 12px; margin-top: 8px;
+  background: var(--warm); color: #fff;
+  border: none; border-radius: var(--r12);
+  font-size: 14px; font-weight: 500; cursor: pointer;
+  transition: opacity 0.18s;
+  font-family: inherit;
+}
+.auth-btn:hover { opacity: 0.9; }
+.auth-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.auth-error {
+  background: var(--red-pale); color: var(--red);
+  padding: 10px 12px; border-radius: var(--r12);
+  font-size: 12px; margin-bottom: 12px;
+  display: none;
+}
+.auth-error.show { display: block; }
+.auth-loading { display: none; text-align: center; color: var(--ink3); font-size: 12px; padding: 40px 0; }
+.auth-loading.show { display: block; }
+
+/* 主界面默认隐藏,登录后才显示 */
+.app-hidden { display: none !important; }
+
 </style>
 </head>
 <body>
 
-<!-- 顶部栏 -->
+<!-- 登录页 -->
+<div class="auth-screen" id="authScreen">
+  <div class="auth-card" id="authCard">
+    <div class="auth-logo">健康日记</div>
+    <div class="auth-sub">登录以访问你的私人记录</div>
+    <div class="auth-error" id="authError"></div>
+    <input type="email" id="authEmail" class="auth-input" placeholder="邮箱" autocomplete="email">
+    <input type="password" id="authPassword" class="auth-input" placeholder="密码" autocomplete="current-password">
+    <button class="auth-btn" id="authBtn" onclick="handleLogin()">登 录</button>
+  </div>
+  <div class="auth-loading" id="authLoading">正在加载…</div>
+</div>
+
+<!-- 主界面容器(登录前隐藏) -->
+<div id="appContainer" class="app-hidden"><!-- 顶部栏 -->
 <div class="topbar">
   <div class="topbar-icon" id="menuBtn" onclick="openDrawer()">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
@@ -711,7 +781,7 @@ input[type=range]::-webkit-slider-thumb {
   <div class="page-inner">
 
     <!-- 情绪 -->
-    <div class="section-sep">① 情绪</div>
+    <div class="section-sep">① 情绪 <span style="font-weight:400;color:var(--ink3);font-size:12px;margin-left:6px;">可多选</span></div>
     <div class="card" style="overflow:visible;">
       <div style="padding-top:14px;">
         <div class="mood-row" id="moodRow">
@@ -1055,7 +1125,11 @@ input[type=range]::-webkit-slider-thumb {
         <div class="drawer-item-text">数据分析</div>
       </div>
     </div>
-    <div class="drawer-footer">Me.log · 我的私人健康档案</div>
+    <div class="drawer-footer">
+      <div id="drawerUserEmail" style="font-size:11px;color:var(--ink3);margin-bottom:8px;"></div>
+      <button onclick="handleLogout()" style="background:none;border:1px solid var(--border);color:var(--ink3);padding:6px 14px;border-radius:8px;font-size:11px;cursor:pointer;">登出</button>
+      <div style="margin-top:10px;color:var(--ink4);">Me.log · 我的私人健康档案</div>
+    </div>
   </div>
 </div>
 
@@ -1214,13 +1288,39 @@ const catName = { cleanser:'洁面',toner:'水',essence:'精华',serum:'安瓶',
 const starLabels = ['','很差睡眠','睡眠较差','一般','睡得还好','睡眠很好'];
 
 // ── 状态变量 ──
-let selectedMood = '';
+let selectedMoods = []; // 当天选中的情绪(数组,支持多选)
 let selectedExType = '';
 let selectedSkinState = '';
 let selectedSkinTime = 'morning';
 let sleepQuality = 0;
 let exList = []; // 当天运动临时列表
 let moodChartInstance = null;
+
+// ── 情绪工具函数(向后兼容老数据) ──
+// 把 log 对象里的情绪统一返回成数组
+function getMoodWords(log) {
+  if (!log) return [];
+  if (Array.isArray(log.mood_words) && log.mood_words.length > 0) return log.mood_words;
+  if (log.mood_word) return [log.mood_word];
+  return [];
+}
+// 多个情绪的 emoji 拼成字符串
+function getMoodEmojis(words) {
+  if (!words || words.length === 0) return '';
+  return words.map(w => moodEmoji[w] || '').filter(Boolean).join('');
+}
+// 多个情绪的文字(用顿号连接)
+function getMoodText(words) {
+  if (!words || words.length === 0) return '';
+  return words.join('、');
+}
+// 多个情绪的平均分
+function getMoodAvgScore(words) {
+  if (!words || words.length === 0) return null;
+  const scores = words.map(w => moodScore[w]).filter(s => s !== undefined);
+  if (scores.length === 0) return null;
+  return scores.reduce((a,b)=>a+b,0) / scores.length;
+}
 
 // ── 工具 ──
 function showToast(msg) {
@@ -1249,12 +1349,20 @@ function switchPage(name, title, el) {
   if (name === 'analysis') loadAnalysis();
 }
 
-// ── 情绪选择 ──
+// ── 情绪选择(多选) ──
 document.querySelectorAll('.mood-chip').forEach(c => {
   c.addEventListener('click', () => {
-    document.querySelectorAll('.mood-chip').forEach(x => x.classList.remove('selected'));
-    c.classList.add('selected');
-    selectedMood = c.dataset.val;
+    const val = c.dataset.val;
+    const idx = selectedMoods.indexOf(val);
+    if (idx >= 0) {
+      // 已选中,取消
+      selectedMoods.splice(idx, 1);
+      c.classList.remove('selected');
+    } else {
+      // 未选中,加入
+      selectedMoods.push(val);
+      c.classList.add('selected');
+    }
   });
 });
 
@@ -1358,6 +1466,7 @@ async function saveProduct() {
   const name = document.getElementById('newProdName').value.trim();
   if (!name) { showToast('请填写产品名称'); return; }
   const { error } = await sb.from('skincare_products').insert({
+    user_id: currentUserId,
     name, brand: document.getElementById('newProdBrand').value || null,
     category: document.getElementById('newProdCat').value,
     start_date: document.getElementById('newProdStart').value || todayStr,
@@ -1374,13 +1483,17 @@ async function loadLogForm() {
   const { data } = await sb.from('daily_logs').select('*').eq('date', todayStr).single();
   const btn = document.getElementById('saveBtn');
   exList = [];
+  // 重置情绪选中态(避免切页时的脏数据)
+  selectedMoods = [];
+  document.querySelectorAll('.mood-chip').forEach(c => c.classList.remove('selected'));
 
   if (data) {
-    // 情绪
-    if (data.mood_word) {
-      selectedMood = data.mood_word;
-      document.querySelectorAll('.mood-chip').forEach(c => c.classList.toggle('selected', c.dataset.val === data.mood_word));
-    }
+    // 情绪(支持数组,兼容老的单值)
+    const moods = getMoodWords(data);
+    selectedMoods = [...moods];
+    document.querySelectorAll('.mood-chip').forEach(c => {
+      c.classList.toggle('selected', selectedMoods.includes(c.dataset.val));
+    });
     if (data.mood_note) document.getElementById('moodNote').value = data.mood_note;
     if (data.negative_thoughts) document.getElementById('negThoughts').value = data.negative_thoughts;
     // 身体
@@ -1431,7 +1544,9 @@ async function loadLogForm() {
 async function saveLog() {
   const logData = {
     date: todayStr,
-    mood_word: selectedMood || null,
+    user_id: currentUserId,
+    mood_words: selectedMoods.length > 0 ? selectedMoods : null,
+    mood_word: selectedMoods.length > 0 ? selectedMoods[0] : null, // 兼容老字段
     mood_note: document.getElementById('moodNote').value || null,
     negative_thoughts: document.getElementById('negThoughts').value || null,
     water_ok: document.getElementById('waterOk').checked,
@@ -1450,13 +1565,13 @@ async function saveLog() {
     nap_note: document.getElementById('napDone').checked ? (document.getElementById('napNote').value || null) : null,
     energy_level: parseInt(document.getElementById('energySlider').value),
   };
-  const { error } = await sb.from('daily_logs').upsert(logData, { onConflict: 'date' });
+  const { error } = await sb.from('daily_logs').upsert(logData, { onConflict: 'user_id,date' });
   if (error) { showToast('保存失败：' + error.message); return; }
 
   // 运动：删掉旧的，重新插入当前列表
   await sb.from('exercise_logs').delete().eq('date', todayStr);
   if (exList.length > 0) {
-    const exInsert = exList.map(e => ({ date: todayStr, exercise_type: e.exercise_type, duration_minutes: e.duration_minutes, feeling: e.feeling }));
+    const exInsert = exList.map(e => ({ user_id: currentUserId, date: todayStr, exercise_type: e.exercise_type, duration_minutes: e.duration_minutes, feeling: e.feeling }));
     await sb.from('exercise_logs').insert(exInsert);
   }
 
@@ -1467,6 +1582,7 @@ async function saveLog() {
 // ── 保存护肤记录 ──
 async function saveSkinLog() {
   const { error } = await sb.from('skincare_logs').insert({
+    user_id: currentUserId,
     date: todayStr,
     time_of_day: selectedSkinTime,
     skin_condition: selectedSkinState || null,
@@ -1539,7 +1655,8 @@ async function generateSummary() {
 
   // 整理数据
   const parts = [];
-  if (log.mood_word) parts.push(`情绪：${log.mood_word}`);
+  const moodList = getMoodWords(log);
+  if (moodList.length > 0) parts.push(`情绪：${moodList.join('、')}`);
   if (log.mood_note) parts.push(`心情备注：${log.mood_note}`);
   if (log.negative_thoughts) parts.push(`负面想法：${log.negative_thoughts}`);
   if (log.sleep_quality) parts.push(`睡眠质量：${log.sleep_quality}星`);
@@ -1585,7 +1702,7 @@ ${dataStr}
     const summary = data.content?.[0]?.text || '今天也辛苦了，好好休息。';
 
     // 存入数据库
-    await sb.from('daily_summaries').upsert({ date: todayStr, summary }, { onConflict: 'date' });
+    await sb.from('daily_summaries').upsert({ user_id: currentUserId, date: todayStr, summary }, { onConflict: 'user_id,date' });
 
     el.innerHTML = `
       <div class="summary-card">
@@ -1605,11 +1722,13 @@ async function loadHome() {
   // 今日记录
   const { data: log } = await sb.from('daily_logs').select('*').eq('date', todayStr).single();
   if (log) {
-    const emoji = moodEmoji[log.mood_word] || '🌿';
+    const moods = getMoodWords(log);
+    const emoji = moods.length > 0 ? getMoodEmojis(moods) : '🌿';
+    const moodText = getMoodText(moods);
     document.getElementById('heroEmoji').textContent = emoji;
-    document.getElementById('heroMoodWord').textContent = log.mood_word || '记录了今天';
-    document.getElementById('heroMoodNote').textContent = log.mood_note || (log.mood_word ? '今天的状态' : '');
-    document.getElementById('heroQuestion').textContent = log.mood_word ? `今天是${log.mood_word}的一天` : '你今天过得怎么样？';
+    document.getElementById('heroMoodWord').textContent = moodText || '记录了今天';
+    document.getElementById('heroMoodNote').textContent = log.mood_note || (moodText ? '今天的状态' : '');
+    document.getElementById('heroQuestion').textContent = moodText ? `今天是${moodText}的一天` : '你今天过得怎么样？';
 
     const sleepStr = log.sleep_start && log.sleep_end ? `${log.sleep_start}~${log.sleep_end}` : (log.sleep_quality ? `${log.sleep_quality}星` : '—');
     document.getElementById('statusSleep').innerHTML = sleepStr;
@@ -1642,18 +1761,20 @@ async function loadHome() {
     document.getElementById('statusEx').innerHTML = '<span class="status-no">—</span>';
   }
 
-  // 情绪图表
+  // 情绪图表(多情绪用平均分)
   const d7 = new Date(today); d7.setDate(today.getDate() - 6);
-  const { data: logs7 } = await sb.from('daily_logs').select('date,mood_word').gte('date', d7.toISOString().split('T')[0]).order('date');
+  const { data: logs7 } = await sb.from('daily_logs').select('date,mood_word,mood_words').gte('date', d7.toISOString().split('T')[0]).order('date');
 
-  const labels = [], scores = [], pointEmojis = [];
+  const labels = [], scores = [], pointEmojis = [], pointMoodTexts = [];
   for (let i = 6; i >= 0; i--) {
     const d = new Date(today); d.setDate(today.getDate() - i);
     const ds = d.toISOString().split('T')[0];
     const log = logs7 ? logs7.find(l => l.date === ds) : null;
+    const moods = getMoodWords(log);
     labels.push(`${d.getMonth()+1}/${d.getDate()}`);
-    scores.push(log && log.mood_word ? (moodScore[log.mood_word] || null) : null);
-    pointEmojis.push(log && log.mood_word ? (moodEmoji[log.mood_word] || '') : '');
+    scores.push(getMoodAvgScore(moods));
+    pointEmojis.push(getMoodEmojis(moods));
+    pointMoodTexts.push(getMoodText(moods));
   }
 
   const ctx = document.getElementById('moodChart').getContext('2d');
@@ -1679,7 +1800,11 @@ async function loadHome() {
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: { legend: { display: false }, tooltip: {
-        callbacks: { label: (ctx) => pointEmojis[ctx.dataIndex] + ' ' + (scores[ctx.dataIndex] !== null ? Object.entries(moodScore).find(([k,v])=>v===scores[ctx.dataIndex])?.[0]||'' : '无记录') }
+        callbacks: { label: (ctx) => {
+          const idx = ctx.dataIndex;
+          if (scores[idx] === null) return '无记录';
+          return `${pointEmojis[idx]} ${pointMoodTexts[idx]} (${scores[idx].toFixed(1)})`;
+        }}
       }},
       scales: {
         y: { min: 0, max: 5.5, display: false },
@@ -1713,15 +1838,19 @@ async function loadHistory() {
     return;
   }
 
-  el.innerHTML = data.map(d => `
+  el.innerHTML = data.map(d => {
+    const moods = getMoodWords(d);
+    const emoji = moods.length > 0 ? getMoodEmojis(moods) : '📝';
+    const moodText = getMoodText(moods) || '无情绪记录';
+    return `
     <div onclick="showHistDetail(${JSON.stringify(d).replace(/"/g,'&quot;')})"
       style="display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--bg2);cursor:pointer;">
       <div style="display:flex;align-items:center;gap:10px;">
-        <div style="font-size:22px;">${moodEmoji[d.mood_word]||'📝'}</div>
+        <div style="font-size:22px;">${emoji}</div>
         <div>
           <div style="font-size:13px;font-weight:500;color:var(--ink);">${d.date}</div>
           <div style="font-size:11px;color:var(--ink3);margin-top:2px;">
-            ${d.mood_word||'无情绪记录'}
+            ${moodText}
             ${d.sleep_start&&d.sleep_end?' · '+d.sleep_start+'~'+d.sleep_end:''}
             ${d.water_ok?' · 💧':''}
           </div>
@@ -1729,7 +1858,8 @@ async function loadHistory() {
       </div>
       <div style="color:var(--ink4);font-size:16px;">›</div>
     </div>
-  `).join('').replace(/border-bottom[^;]+;(?=[^<]*<\/div>\s*$)/,'');
+  `;
+  }).join('').replace(/border-bottom[^;]+;(?=[^<]*<\/div>\s*$)/,'');
 }
 
 async function showHistDetail(d) {
@@ -1746,11 +1876,15 @@ async function showHistDetail(d) {
     ? exData.map(e => `${e.exercise_type}${e.duration_minutes?' '+e.duration_minutes+'分钟':''}`).join('、')
     : '无';
 
+  const dMoods = getMoodWords(d);
+  const dEmoji = dMoods.length > 0 ? getMoodEmojis(dMoods) : '📝';
+  const dMoodText = getMoodText(dMoods) || '未记录';
+
   document.getElementById('histDetailContent').innerHTML = `
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;padding:14px;background:var(--warm-pale);border-radius:var(--r16);">
-      <div style="font-size:36px;">${moodEmoji[d.mood_word]||'📝'}</div>
+      <div style="font-size:36px;">${dEmoji}</div>
       <div>
-        <div style="font-family:'Source Han Serif SC',serif;font-size:18px;color:var(--ink);">${d.mood_word||'未记录'}</div>
+        <div style="font-family:'Source Han Serif SC',serif;font-size:18px;color:var(--ink);">${dMoodText}</div>
         ${d.mood_note?`<div style="font-size:12px;color:var(--ink2);margin-top:3px;">${d.mood_note}</div>`:''}
       </div>
     </div>
@@ -1791,7 +1925,11 @@ async function loadAnalysis() {
     document.getElementById('anWater').innerHTML = `${waterDays}<span>天</span>`;
 
     const moodCount = {};
-    logs.forEach(l => { if(l.mood_word) moodCount[l.mood_word]=(moodCount[l.mood_word]||0)+1; });
+    logs.forEach(l => {
+      const moods = getMoodWords(l);
+      // 每个选中情绪都计数(同一天内去重)
+      [...new Set(moods)].forEach(m => { moodCount[m] = (moodCount[m]||0) + 1; });
+    });
     const sorted = Object.entries(moodCount).sort((a,b)=>b[1]-a[1]);
     document.getElementById('anMood').innerHTML = sorted.length > 0
       ? sorted.map(([w,c]) => `<div class="stat-row-item"><div class="stat-row-name">${moodEmoji[w]||''} ${w}</div><div class="stat-row-val">${c}天</div></div>`).join('')
@@ -1821,8 +1959,107 @@ async function loadAnalysis() {
   }
 }
 
+// ════════════════════════════════════════
+// ── 鉴权 (Authentication) ──
+// ════════════════════════════════════════
+
+let currentUserId = null;
+
+// 检查登录状态
+async function initAuth() {
+  document.getElementById('authLoading').classList.add('show');
+  document.getElementById('authCard').style.display = 'none';
+
+  const { data: { session }, error } = await sb.auth.getSession();
+
+  if (session && session.user) {
+    // 已登录,进主界面
+    currentUserId = session.user.id;
+    document.getElementById('drawerUserEmail').textContent = session.user.email || '';
+    showApp();
+    loadHome();
+  } else {
+    // 未登录,显示登录框
+    document.getElementById('authLoading').classList.remove('show');
+    document.getElementById('authCard').style.display = 'block';
+    document.getElementById('authEmail').focus();
+  }
+}
+
+function showApp() {
+  document.getElementById('authScreen').style.display = 'none';
+  document.getElementById('appContainer').classList.remove('app-hidden');
+}
+
+function hideApp() {
+  document.getElementById('appContainer').classList.add('app-hidden');
+  document.getElementById('authScreen').style.display = 'flex';
+  document.getElementById('authLoading').classList.remove('show');
+  document.getElementById('authCard').style.display = 'block';
+}
+
+// 处理登录
+async function handleLogin() {
+  const email = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPassword').value;
+  const errEl = document.getElementById('authError');
+  const btn = document.getElementById('authBtn');
+
+  errEl.classList.remove('show');
+
+  if (!email || !password) {
+    errEl.textContent = '请输入邮箱和密码';
+    errEl.classList.add('show');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '登录中…';
+
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+
+  btn.disabled = false;
+  btn.textContent = '登 录';
+
+  if (error) {
+    errEl.textContent = error.message.includes('Invalid') ? '邮箱或密码错误' : ('登录失败：' + error.message);
+    errEl.classList.add('show');
+    return;
+  }
+
+  if (data.session && data.user) {
+    currentUserId = data.user.id;
+    document.getElementById('drawerUserEmail').textContent = data.user.email || '';
+    document.getElementById('authPassword').value = '';
+    showApp();
+    loadHome();
+  }
+}
+
+// 处理登出
+async function handleLogout() {
+  if (!confirm('确定要登出吗？')) return;
+  await sb.auth.signOut();
+  currentUserId = null;
+  document.getElementById('drawerBg').classList.remove('open');
+  document.getElementById('authEmail').value = '';
+  document.getElementById('authPassword').value = '';
+  hideApp();
+}
+
+// 回车键登录
+document.getElementById('authPassword').addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') handleLogin();
+});
+document.getElementById('authEmail').addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') {
+    if (document.getElementById('authPassword').value) handleLogin();
+    else document.getElementById('authPassword').focus();
+  }
+});
+
 // 初始化
-loadHome();
+initAuth();
 </script>
 </body>
 </html>
