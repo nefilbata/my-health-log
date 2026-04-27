@@ -1313,8 +1313,22 @@ const SUPABASE_URL = 'https://gcpoadsmxpooiofcyfci.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdjcG9hZHNteHBvb2lvZmN5ZmNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyODIzMTksImV4cCI6MjA5Mjg1ODMxOX0.5TCVVmDlhofBivq8oRwL5Evp3_1ywV3pMB_tGLvE-tg';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const today = new Date();
-const todayStr = today.toISOString().split('T')[0];
+// 本地时区的日期字符串(避免 UTC 时区导致的"今天还是昨天"问题)
+function localDateStr(d) {
+  d = d || new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+// 用 getter 让 today / todayStr 每次访问都返回最新值,避免页面挂着跨过零点的问题
+let today = new Date();
+let todayStr = localDateStr(today);
+function refreshToday() {
+  today = new Date();
+  todayStr = localDateStr(today);
+}
 const weekDays = ['日','一','二','三','四','五','六'];
 
 // 日期
@@ -1379,6 +1393,7 @@ function daysSince(ds) {
 // ── 页面切换 ──
 const pageTitles = { home:'今日概览', log:'每日记录', skin:'护肤', analysis:'数据分析' };
 function switchPage(name, title, el) {
+  refreshToday(); // 切页时刷新"今天"是哪天,避免跨零点 bug
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('page-' + name).classList.add('active');
@@ -1524,9 +1539,33 @@ async function loadLogForm() {
   const { data } = await sb.from('daily_logs').select('*').eq('date', todayStr).single();
   const btn = document.getElementById('saveBtn');
   exList = [];
-  // 重置情绪选中态(避免切页时的脏数据)
+
+  // 完整重置表单(避免切日期/换页时残留旧数据)
   selectedMoods = [];
   document.querySelectorAll('.mood-chip').forEach(c => c.classList.remove('selected'));
+  document.getElementById('moodNote').value = '';
+  document.getElementById('negThoughts').value = '';
+  document.getElementById('waterOk').checked = false;
+  document.getElementById('bowelOk').checked = false;
+  document.getElementById('bowelTime').value = '';
+  document.getElementById('bowelExpand').style.display = 'none';
+  document.getElementById('periodOn').checked = false;
+  document.getElementById('periodDay').value = '';
+  document.getElementById('periodExpand').style.display = 'none';
+  sleepQuality = 0;
+  document.querySelectorAll('#sleepStars .star').forEach(s => s.classList.remove('active'));
+  document.getElementById('sleepStarLabel').textContent = '';
+  document.getElementById('sleepStart').value = '';
+  document.getElementById('sleepEnd').value = '';
+  document.getElementById('sleepNote').value = '';
+  document.getElementById('dreamNote').value = '';
+  document.getElementById('napDone').checked = false;
+  document.getElementById('napStart').value = '';
+  document.getElementById('napEnd').value = '';
+  document.getElementById('napNote').value = '';
+  document.getElementById('napExpand').style.display = 'none';
+  document.getElementById('energySlider').value = 3;
+  document.getElementById('energyDisplay').textContent = 3;
 
   if (data) {
     // 情绪(支持数组,兼容老的单值)
@@ -1694,11 +1733,11 @@ async function copyData(range) {
     label = `今天（${todayStr}）`;
   } else if (range === 'week') {
     const d = new Date(today); d.setDate(today.getDate() - 6);
-    startDate = d.toISOString().split('T')[0];
+    startDate = localDateStr(d);
     label = `近7天（${startDate} 到 ${todayStr}）`;
   } else if (range === 'month') {
     const d = new Date(today); d.setDate(today.getDate() - 29);
-    startDate = d.toISOString().split('T')[0];
+    startDate = localDateStr(d);
     label = `近30天（${startDate} 到 ${todayStr}）`;
   }
 
@@ -1750,6 +1789,9 @@ async function copyData(range) {
 
 // ── 加载首页 ──
 async function loadHome() {
+  // 更新顶部日期标签(每次切到首页都刷新)
+  document.getElementById('heroDate').textContent =
+    `${today.getMonth()+1}月${today.getDate()}日 · 周${weekDays[today.getDay()]}`;
   // 今日记录
   const { data: log } = await sb.from('daily_logs').select('*').eq('date', todayStr).single();
   if (log) {
@@ -1794,12 +1836,12 @@ async function loadHome() {
 
   // 情绪图表(多情绪用平均分)
   const d7 = new Date(today); d7.setDate(today.getDate() - 6);
-  const { data: logs7 } = await sb.from('daily_logs').select('date,mood_word,mood_words').gte('date', d7.toISOString().split('T')[0]).order('date');
+  const { data: logs7 } = await sb.from('daily_logs').select('date,mood_word,mood_words').gte('date', localDateStr(d7)).order('date');
 
   const labels = [], scores = [], pointEmojis = [], pointMoodTexts = [];
   for (let i = 6; i >= 0; i--) {
     const d = new Date(today); d.setDate(today.getDate() - i);
-    const ds = d.toISOString().split('T')[0];
+    const ds = localDateStr(d);
     const log = logs7 ? logs7.find(l => l.date === ds) : null;
     const moods = getMoodWords(log);
     labels.push(`${d.getMonth()+1}/${d.getDate()}`);
@@ -1944,8 +1986,8 @@ async function showHistDetail(d) {
 async function loadAnalysis() {
   loadHistory();
   const d30 = new Date(today); d30.setDate(today.getDate() - 29);
-  const { data: logs } = await sb.from('daily_logs').select('*').gte('date', d30.toISOString().split('T')[0]);
-  const { data: exLogs } = await sb.from('exercise_logs').select('*').gte('date', d30.toISOString().split('T')[0]);
+  const { data: logs } = await sb.from('daily_logs').select('*').gte('date', localDateStr(d30));
+  const { data: exLogs } = await sb.from('exercise_logs').select('*').gte('date', localDateStr(d30));
 
   if (logs && logs.length > 0) {
     const avgSleep = (logs.reduce((s,l)=>s+(l.sleep_quality||0),0)/logs.length).toFixed(1);
