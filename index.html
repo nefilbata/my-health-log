@@ -2289,12 +2289,28 @@ async function handleSignup() {
     errEl.classList.add('show'); return;
   }
 
-  // 3. 标记邀请码已使用
-  await sb.from('invite_codes').update({
-    used: true,
-    used_by: data.user.id,
-    used_at: new Date().toISOString()
-  }).eq('code', inviteCode);
+ // 3. 标记邀请码已使用
+  if (data.session) {
+    await sb.auth.setSession({
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token
+    });
+  }
+
+  const { data: updRows, error: updErr } = await sb
+    .from('invite_codes')
+    .update({
+      used: true,
+      used_by: data.user.id,
+      used_at: new Date().toISOString()
+    })
+    .eq('code', inviteCode)
+    .select();
+
+  if (updErr || !updRows || updRows.length === 0) {
+    console.error('邀请码标记失败', { updErr, rows: updRows });
+    alert('注册成功,但邀请码状态未同步,请截图给管理员');
+  }
 
   // 4. 如果有 session,直接进入(取决于 Supabase 是否要求邮件验证)
   if (data.session) {
