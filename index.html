@@ -669,6 +669,26 @@ input[type=range]::-webkit-slider-thumb {
 }
 .copy-btn:hover { background: var(--warm-pale); border-color: var(--warm); }
 .copy-btn:active { transform: scale(0.97); }
+
+/* ── 生理期按钮 ── */
+.period-action-btn {
+  flex: 1; padding: 10px 0;
+  border: 1.5px solid rgba(193,122,74,0.3);
+  background: var(--card); color: var(--warm);
+  border-radius: var(--r12);
+  font-size: 12px; cursor: pointer;
+  font-family: inherit;
+  transition: all 0.18s;
+}
+.period-action-btn:hover { background: var(--warm-pale); border-color: var(--warm); }
+.period-action-btn:active { transform: scale(0.97); }
+.period-action-btn.period-cancel {
+  border-color: var(--border);
+  color: var(--ink3);
+}
+.period-action-btn.period-cancel:hover {
+  background: var(--bg2); border-color: var(--ink4); color: var(--ink2);
+}
 /* ── 登录页 ── */
 .auth-screen {
   position: fixed; inset: 0; z-index: 9999;
@@ -878,19 +898,16 @@ input[type=range]::-webkit-slider-thumb {
             </div>
           </div>
         </div>
-        <div class="toggle-row" style="border-bottom:none;">
-          <div class="toggle-left">
+        <div class="toggle-row" style="border-bottom:none;display:block;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
             <span class="toggle-icon">🌙</span>
-            <div><div class="toggle-text">生理期中</div></div>
+            <div class="toggle-text">生理期</div>
+            <div id="periodStatus" style="margin-left:auto;font-size:12px;color:var(--ink3);">未开始</div>
           </div>
-          <label class="switch"><input type="checkbox" id="periodOn" onchange="togglePeriod()"><span class="switch-track"></span></label>
-        </div>
-        <div id="periodExpand" style="display:none;">
-          <div class="expand-area">
-            <div class="field" style="margin-bottom:0;">
-              <div class="field-label">第几天？</div>
-              <input type="number" id="periodDay" min="1" max="10" placeholder="例如：3">
-            </div>
+          <div id="periodActions" style="display:flex;gap:8px;">
+            <button type="button" id="periodStartBtn" class="period-action-btn" onclick="periodStart()">今天来月经了</button>
+            <button type="button" id="periodEndBtn" class="period-action-btn" onclick="periodEnd()" style="display:none;">今天月经结束</button>
+            <button type="button" id="periodCancelBtn" class="period-action-btn period-cancel" onclick="periodCancel()" style="display:none;">取消今天的记录</button>
           </div>
         </div>
       </div>
@@ -1454,9 +1471,76 @@ document.querySelectorAll('#skinStateGrid .skin-chip').forEach(c => {
 function toggleBowel() {
   document.getElementById('bowelExpand').style.display = document.getElementById('bowelOk').checked ? 'block' : 'none';
 }
-function togglePeriod() {
-  document.getElementById('periodExpand').style.display = document.getElementById('periodOn').checked ? 'block' : 'none';
+
+// ── 生理期管理 ──
+// 用 daily_logs.period 字段(true/false)存,通过查询前后日期算第几天和生理期数
+let currentPeriodState = { onPeriod: false, dayNum: 0 }; // 当天的状态(本地缓存)
+
+// 加/减若干天,返回 yyyy-mm-dd
+function addDays(dateStr, n) {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + n);
+  return localDateStr(d);
 }
+
+// 算"今天是这次生理期的第几天":往前查连续 period=true 的天数
+async function calcPeriodDay(dateStr) {
+  // 往前最多查 15 天,找到连续生理期天的起始日
+  let day = 1;
+  for (let i = 1; i <= 14; i++) {
+    const prevDate = addDays(dateStr, -i);
+    const { data } = await sb.from('daily_logs').select('period').eq('date', prevDate).maybeSingle();
+    if (data && data.period === true) day++;
+    else break;
+  }
+  return day;
+}
+
+// 渲染按钮和状态
+function renderPeriodUI() {
+  const statusEl = document.getElementById('periodStatus');
+  const startBtn = document.getElementById('periodStartBtn');
+  const endBtn = document.getElementById('periodEndBtn');
+  const cancelBtn = document.getElementById('periodCancelBtn');
+
+  if (currentPeriodState.onPeriod) {
+    statusEl.textContent = `第 ${currentPeriodState.dayNum} 天`;
+    statusEl.style.color = 'var(--warm)';
+    startBtn.style.display = 'none';
+    endBtn.style.display = 'block';
+    cancelBtn.style.display = 'block';
+  } else {
+    statusEl.textContent = '未开始';
+    statusEl.style.color = 'var(--ink3)';
+    startBtn.style.display = 'block';
+    endBtn.style.display = 'none';
+    cancelBtn.style.display = 'none';
+  }
+}
+
+// 点"今天来月经了"
+async function periodStart() {
+  const dayNum = await calcPeriodDay(todayStr);
+  currentPeriodState = { onPeriod: true, dayNum };
+  renderPeriodUI();
+  showToast(dayNum > 1 ? `已记录 · 第 ${dayNum} 天` : '✓ 已开始记录生理期');
+}
+
+// 点"今天月经结束"(=今天起算结束,今天本身不再标 period)
+async function periodEnd() {
+  if (!confirm('确定今天是月经结束日?\n今天将不再标记为生理期。')) return;
+  currentPeriodState = { onPeriod: false, dayNum: 0 };
+  renderPeriodUI();
+  showToast('✓ 已结束');
+}
+
+// 点"取消今天的记录"(误点了"开始"想撤回)
+function periodCancel() {
+  currentPeriodState = { onPeriod: false, dayNum: 0 };
+  renderPeriodUI();
+  showToast('已取消');
+}
+
 function toggleNap() {
   document.getElementById('napExpand').style.display = document.getElementById('napDone').checked ? 'block' : 'none';
 }
@@ -1549,9 +1633,8 @@ async function loadLogForm() {
   document.getElementById('bowelOk').checked = false;
   document.getElementById('bowelTime').value = '';
   document.getElementById('bowelExpand').style.display = 'none';
-  document.getElementById('periodOn').checked = false;
-  document.getElementById('periodDay').value = '';
-  document.getElementById('periodExpand').style.display = 'none';
+  currentPeriodState = { onPeriod: false, dayNum: 0 };
+  renderPeriodUI();
   sleepQuality = 0;
   document.querySelectorAll('#sleepStars .star').forEach(s => s.classList.remove('active'));
   document.getElementById('sleepStarLabel').textContent = '';
@@ -1580,8 +1663,12 @@ async function loadLogForm() {
     document.getElementById('waterOk').checked = data.water_ok || false;
     document.getElementById('bowelOk').checked = data.bowel_ok || false;
     if (data.bowel_ok) { document.getElementById('bowelExpand').style.display = 'block'; if(data.bowel_time) document.getElementById('bowelTime').value = data.bowel_time; }
-    document.getElementById('periodOn').checked = data.period || false;
-    if (data.period) { document.getElementById('periodExpand').style.display = 'block'; if(data.period_day) document.getElementById('periodDay').value = data.period_day; }
+    // 生理期:如果今天已经记为生理期,算出第几天
+    if (data.period) {
+      const dayNum = await calcPeriodDay(todayStr);
+      currentPeriodState = { onPeriod: true, dayNum };
+      renderPeriodUI();
+    }
     // 睡眠
     if (data.sleep_quality) {
       sleepQuality = data.sleep_quality;
@@ -1607,6 +1694,14 @@ async function loadLogForm() {
     btn.textContent = '更新今日记录';
   } else {
     btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>保存今日记录';
+    // 没今日记录,但如果昨天有生理期,自动按"延续"显示(用户保存时就会写 period=true)
+    const yesterday = addDays(todayStr, -1);
+    const { data: yLog } = await sb.from('daily_logs').select('period').eq('date', yesterday).maybeSingle();
+    if (yLog && yLog.period === true) {
+      const dayNum = await calcPeriodDay(todayStr);
+      currentPeriodState = { onPeriod: true, dayNum };
+      renderPeriodUI();
+    }
   }
 
   // 加载当天运动
@@ -1632,8 +1727,8 @@ async function saveLog() {
     water_ok: document.getElementById('waterOk').checked,
     bowel_ok: document.getElementById('bowelOk').checked,
     bowel_time: document.getElementById('bowelOk').checked ? (document.getElementById('bowelTime').value || null) : null,
-    period: document.getElementById('periodOn').checked,
-    period_day: document.getElementById('periodOn').checked ? parseInt(document.getElementById('periodDay').value) || null : null,
+    period: currentPeriodState.onPeriod,
+    period_day: currentPeriodState.onPeriod ? currentPeriodState.dayNum : null,
     sleep_quality: sleepQuality || null,
     sleep_start: document.getElementById('sleepStart').value || null,
     sleep_end: document.getElementById('sleepEnd').value || null,
@@ -2008,9 +2103,35 @@ async function loadAnalysis() {
       ? sorted.map(([w,c]) => `<div class="stat-row-item"><div class="stat-row-name">${moodEmoji[w]||''} ${w}</div><div class="stat-row-val">${c}天</div></div>`).join('')
       : '<div style="color:var(--ink3);font-size:13px;text-align:center;padding:12px">暂无数据</div>';
 
-    const periodDays = logs.filter(l=>l.period).length;
-    document.getElementById('anPeriod').innerHTML = periodDays > 0
-      ? `<div class="stat-row-item"><div class="stat-row-name">🌙 生理期天数</div><div class="stat-row-val">${periodDays}天</div></div>`
+    // 生理期统计:把连续 period=true 的日期分组成"次",每组的长度就是那次的天数
+    const periodLogs = logs.filter(l => l.period).sort((a,b) => a.date.localeCompare(b.date));
+    let cycles = []; // [{start, end, days}, ...]
+    let curStart = null, curEnd = null;
+    periodLogs.forEach(l => {
+      if (!curStart) {
+        curStart = curEnd = l.date;
+      } else if (addDays(curEnd, 1) === l.date) {
+        curEnd = l.date;
+      } else {
+        // 不连续,前一段结束
+        cycles.push({ start: curStart, end: curEnd });
+        curStart = curEnd = l.date;
+      }
+    });
+    if (curStart) cycles.push({ start: curStart, end: curEnd });
+
+    const totalDays = cycles.reduce((s,c) => {
+      const d1 = new Date(c.start+'T00:00:00'), d2 = new Date(c.end+'T00:00:00');
+      return s + Math.round((d2 - d1) / 86400000) + 1;
+    }, 0);
+
+    document.getElementById('anPeriod').innerHTML = cycles.length > 0
+      ? `<div class="stat-row-item"><div class="stat-row-name">🌙 生理期</div><div class="stat-row-val">${cycles.length}次 · 共${totalDays}天</div></div>` +
+        cycles.map(c => {
+          const d1 = new Date(c.start+'T00:00:00'), d2 = new Date(c.end+'T00:00:00');
+          const days = Math.round((d2 - d1) / 86400000) + 1;
+          return `<div class="stat-row-item"><div class="stat-row-name" style="font-size:12px;color:var(--ink3);">　${c.start} ~ ${c.end}</div><div class="stat-row-val">${days}天</div></div>`;
+        }).join('')
       : '<div style="color:var(--ink3);font-size:13px;text-align:center;padding:12px">暂无记录</div>';
   }
 
