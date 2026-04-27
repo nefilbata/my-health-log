@@ -1,0 +1,1166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>我的健康日志</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400;500;600&family=Noto+Sans+SC:wght@300;400;500&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root {
+  --bg: #faf7f2;
+  --bg2: #f3ede3;
+  --card: #ffffff;
+  --border: #e8e0d4;
+  --ink: #2c2416;
+  --ink2: #6b5d4f;
+  --ink3: #a89880;
+  --accent: #c17a4a;
+  --accent2: #8fab8e;
+  --accent3: #8f7bab;
+  --accent4: #ab7b8f;
+  --danger: #c14a4a;
+  --radius: 16px;
+  --shadow: 0 2px 16px rgba(44,36,22,0.07);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: 'Noto Sans SC', sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  min-height: 100vh;
+  padding-bottom: 80px;
+}
+
+/* 顶部 */
+.topbar {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(250,247,242,0.95);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  padding: 0 20px;
+  height: 56px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.logo {
+  font-family: 'DM Serif Display', serif;
+  font-size: 20px; color: var(--accent);
+  letter-spacing: 0.02em;
+}
+.logo span { font-style: italic; }
+.date-display {
+  font-size: 12px; color: var(--ink3);
+  letter-spacing: 0.05em;
+}
+
+/* 底部导航 */
+.bottom-nav {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+  background: rgba(250,247,242,0.97);
+  backdrop-filter: blur(16px);
+  border-top: 1px solid var(--border);
+  display: flex;
+  padding: 8px 0 env(safe-area-inset-bottom, 8px);
+}
+.nav-item {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; gap: 3px;
+  padding: 6px 4px;
+  background: none; border: none; cursor: pointer;
+  color: var(--ink3); transition: color 0.2s;
+  font-size: 10px; font-family: 'Noto Sans SC', sans-serif;
+  letter-spacing: 0.05em;
+}
+.nav-item.active { color: var(--accent); }
+.nav-item svg { width: 22px; height: 22px; }
+
+/* 页面 */
+.page { display: none; padding: 20px; max-width: 480px; margin: 0 auto; }
+.page.active { display: block; }
+
+/* 卡片 */
+.card {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+}
+.card-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 14px; font-weight: 500;
+  color: var(--ink2);
+  margin-bottom: 16px;
+  display: flex; align-items: center; gap: 8px;
+}
+.card-title .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--accent); flex-shrink: 0;
+}
+.card-title .dot.green { background: var(--accent2); }
+.card-title .dot.purple { background: var(--accent3); }
+.card-title .dot.pink { background: var(--accent4); }
+
+/* 情绪词选择 */
+.mood-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+  margin-bottom: 14px;
+}
+.mood-chip {
+  padding: 8px 4px; border-radius: 10px;
+  border: 1.5px solid var(--border);
+  background: var(--bg); cursor: pointer;
+  font-size: 12px; text-align: center; color: var(--ink2);
+  transition: all 0.2s; line-height: 1.4;
+}
+.mood-chip.selected {
+  border-color: var(--accent);
+  background: #fdf3ea;
+  color: var(--accent);
+  font-weight: 500;
+}
+.mood-chip .emoji { font-size: 18px; display: block; margin-bottom: 2px; }
+
+/* 输入框 */
+textarea, input[type=text], input[type=number], select {
+  width: 100%; padding: 10px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 13px; color: var(--ink);
+  resize: none; outline: none;
+  transition: border-color 0.2s;
+  -webkit-appearance: none;
+}
+textarea:focus, input:focus, select:focus {
+  border-color: var(--accent);
+}
+textarea { min-height: 70px; line-height: 1.6; }
+.input-label {
+  font-size: 12px; color: var(--ink3);
+  margin-bottom: 6px; letter-spacing: 0.03em;
+}
+.input-group { margin-bottom: 14px; }
+
+/* 开关行 */
+.toggle-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--bg2);
+}
+.toggle-row:last-child { border-bottom: none; }
+.toggle-label { font-size: 13px; color: var(--ink2); }
+.toggle-sub { font-size: 11px; color: var(--ink3); margin-top: 1px; }
+.toggle {
+  position: relative; width: 44px; height: 26px; flex-shrink: 0;
+}
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute; inset: 0; border-radius: 13px;
+  background: var(--border); cursor: pointer;
+  transition: background 0.2s;
+}
+.toggle-slider::before {
+  content: ''; position: absolute;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: white; top: 3px; left: 3px;
+  transition: transform 0.2s;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+}
+.toggle input:checked + .toggle-slider { background: var(--accent2); }
+.toggle input:checked + .toggle-slider::before { transform: translateX(18px); }
+
+/* 滑块评分 */
+.slider-row { margin-bottom: 14px; }
+.slider-header { display: flex; justify-content: space-between; margin-bottom: 8px; }
+.slider-val {
+  font-family: 'DM Serif Display', serif;
+  font-size: 22px; color: var(--accent);
+}
+input[type=range] {
+  -webkit-appearance: none; width: 100%; height: 4px;
+  border-radius: 2px; background: var(--bg2);
+  border: none; padding: 0; outline: none;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 20px; height: 20px;
+  border-radius: 50%; background: var(--accent);
+  cursor: pointer; box-shadow: 0 2px 6px rgba(193,122,74,0.3);
+}
+
+/* 按钮 */
+.btn {
+  display: block; width: 100%; padding: 14px;
+  border-radius: 12px; border: none; cursor: pointer;
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 14px; font-weight: 500;
+  letter-spacing: 0.05em; transition: all 0.2s;
+}
+.btn-primary { background: var(--accent); color: white; }
+.btn-primary:hover { background: #a86840; }
+.btn-primary:active { transform: scale(0.98); }
+.btn-secondary {
+  background: var(--bg2); color: var(--ink2);
+  border: 1px solid var(--border);
+}
+
+/* 段落标题 */
+.section-label {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 11px; color: var(--ink3);
+  letter-spacing: 0.15em; text-transform: uppercase;
+  margin: 24px 0 12px;
+}
+.section-label:first-child { margin-top: 0; }
+
+/* 成功提示 */
+.toast {
+  position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
+  background: var(--ink); color: white;
+  padding: 10px 20px; border-radius: 20px;
+  font-size: 13px; opacity: 0;
+  transition: opacity 0.3s; pointer-events: none; white-space: nowrap;
+  z-index: 200;
+}
+.toast.show { opacity: 1; }
+
+/* 首页 - 今日概览 */
+.today-hero {
+  background: linear-gradient(135deg, #c17a4a 0%, #a86840 100%);
+  border-radius: 20px; padding: 24px;
+  margin-bottom: 16px; color: white;
+  position: relative; overflow: hidden;
+}
+.today-hero::before {
+  content: ''; position: absolute;
+  width: 120px; height: 120px; border-radius: 50%;
+  background: rgba(255,255,255,0.08);
+  top: -30px; right: -30px;
+}
+.today-hero::after {
+  content: ''; position: absolute;
+  width: 80px; height: 80px; border-radius: 50%;
+  background: rgba(255,255,255,0.06);
+  bottom: -20px; right: 60px;
+}
+.hero-greeting {
+  font-size: 12px; opacity: 0.8; letter-spacing: 0.1em;
+  margin-bottom: 6px;
+}
+.hero-date {
+  font-family: 'DM Serif Display', serif;
+  font-size: 28px; margin-bottom: 16px;
+}
+.hero-stats { display: flex; gap: 20px; }
+.hero-stat { text-align: center; }
+.hero-stat-val { font-size: 22px; font-weight: 500; }
+.hero-stat-label { font-size: 10px; opacity: 0.7; letter-spacing: 0.1em; }
+
+/* 快速状态格 */
+.quick-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 10px; margin-bottom: 16px;
+}
+.quick-card {
+  background: var(--card); border-radius: 14px;
+  padding: 16px; border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+.quick-label { font-size: 11px; color: var(--ink3); margin-bottom: 8px; }
+.quick-val {
+  font-family: 'DM Serif Display', serif;
+  font-size: 20px; color: var(--ink);
+}
+.quick-val.mood { font-size: 14px; font-family: 'Noto Serif SC', serif; }
+.status-dot {
+  display: inline-block; width: 8px; height: 8px;
+  border-radius: 50%; margin-right: 4px;
+}
+.dot-green { background: var(--accent2); }
+.dot-red { background: var(--danger); }
+.dot-gray { background: var(--ink3); }
+
+/* 护肤品列表 */
+.product-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 0; border-bottom: 1px solid var(--bg2);
+}
+.product-item:last-child { border-bottom: none; }
+.product-icon {
+  width: 40px; height: 40px; border-radius: 10px;
+  background: var(--bg2); display: flex; align-items: center;
+  justify-content: center; font-size: 20px; flex-shrink: 0;
+}
+.product-info { flex: 1; }
+.product-name { font-size: 13px; font-weight: 500; color: var(--ink); }
+.product-meta { font-size: 11px; color: var(--ink3); margin-top: 2px; }
+.product-days {
+  font-family: 'DM Serif Display', serif;
+  font-size: 18px; color: var(--accent); text-align: right;
+}
+.product-days-label { font-size: 10px; color: var(--ink3); text-align: right; }
+
+/* 历史记录 */
+.log-item {
+  padding: 14px 0; border-bottom: 1px solid var(--bg2);
+}
+.log-item:last-child { border-bottom: none; }
+.log-date { font-size: 11px; color: var(--ink3); margin-bottom: 4px; }
+.log-mood { font-size: 13px; color: var(--ink); margin-bottom: 4px; }
+.log-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.log-tag {
+  font-size: 10px; padding: 2px 8px; border-radius: 20px;
+  background: var(--bg2); color: var(--ink3);
+}
+.log-tag.green { background: #e8f5e9; color: var(--accent2); }
+.log-tag.red { background: #fdeaea; color: var(--danger); }
+
+/* 趋势图 */
+.chart-wrap { height: 80px; display: flex; align-items: flex-end; gap: 4px; margin-top: 8px; }
+.chart-bar {
+  flex: 1; border-radius: 4px 4px 0 0;
+  background: var(--bg2); min-height: 4px;
+  transition: height 0.5s ease; position: relative; cursor: pointer;
+}
+.chart-bar.filled { background: linear-gradient(to top, var(--accent), #e09a6a); }
+.chart-bar .bar-label {
+  position: absolute; bottom: -16px; left: 50%;
+  transform: translateX(-50%);
+  font-size: 9px; color: var(--ink3); white-space: nowrap;
+}
+
+/* 空状态 */
+.empty-state {
+  text-align: center; padding: 40px 20px;
+  color: var(--ink3);
+}
+.empty-state .empty-icon { font-size: 40px; margin-bottom: 12px; }
+.empty-state p { font-size: 13px; line-height: 1.6; }
+
+/* 加载 */
+.loading { text-align: center; padding: 30px; color: var(--ink3); font-size: 13px; }
+
+/* 运动类型格 */
+.exercise-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+  margin-bottom: 14px;
+}
+.exercise-chip {
+  padding: 10px 6px; border-radius: 10px;
+  border: 1.5px solid var(--border);
+  background: var(--bg); cursor: pointer;
+  font-size: 12px; text-align: center; color: var(--ink2);
+  transition: all 0.2s;
+}
+.exercise-chip.selected {
+  border-color: var(--accent2); background: #f0f7f0; color: var(--accent2);
+}
+.exercise-chip .emoji { font-size: 20px; display: block; margin-bottom: 3px; }
+
+/* 分析页 */
+.analysis-card {
+  background: var(--card); border-radius: var(--radius);
+  padding: 20px; margin-bottom: 12px;
+  border: 1px solid var(--border); box-shadow: var(--shadow);
+}
+.analysis-title {
+  font-family: 'Noto Serif SC', serif; font-size: 14px;
+  color: var(--ink2); margin-bottom: 14px;
+}
+.stat-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--bg2); }
+.stat-row:last-child { border-bottom: none; }
+.stat-name { font-size: 13px; color: var(--ink2); }
+.stat-value { font-family: 'DM Serif Display', serif; font-size: 18px; color: var(--accent); }
+
+/* 添加按钮浮动 */
+.fab {
+  position: fixed; bottom: 80px; right: 20px;
+  width: 52px; height: 52px; border-radius: 50%;
+  background: var(--accent); color: white;
+  border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 16px rgba(193,122,74,0.4);
+  font-size: 24px; transition: all 0.2s; z-index: 50;
+}
+.fab:active { transform: scale(0.92); }
+
+/* 模态框 */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(44,36,22,0.5);
+  z-index: 200; display: none; align-items: flex-end;
+}
+.modal-overlay.show { display: flex; }
+.modal {
+  width: 100%; max-width: 480px; margin: 0 auto;
+  background: var(--bg); border-radius: 24px 24px 0 0;
+  padding: 24px 20px 40px;
+  max-height: 85vh; overflow-y: auto;
+  animation: slideUp 0.3s ease;
+}
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+.modal-handle {
+  width: 36px; height: 4px; border-radius: 2px;
+  background: var(--border); margin: 0 auto 20px;
+}
+.modal-title {
+  font-family: 'DM Serif Display', serif; font-size: 22px;
+  color: var(--ink); margin-bottom: 20px;
+}
+
+/* 皮肤状态 */
+.skin-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px;
+}
+.skin-chip {
+  padding: 8px 4px; border-radius: 10px;
+  border: 1.5px solid var(--border); background: var(--bg);
+  cursor: pointer; font-size: 11px; text-align: center; color: var(--ink2);
+  transition: all 0.2s;
+}
+.skin-chip.selected { border-color: var(--accent3); background: #f5f0fa; color: var(--accent3); }
+.skin-chip .emoji { font-size: 18px; display: block; margin-bottom: 2px; }
+
+@media (max-width: 360px) {
+  .mood-grid { grid-template-columns: repeat(3, 1fr); }
+  .hero-date { font-size: 22px; }
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">Me<span>.</span>log</div>
+  <div class="date-display" id="topDate"></div>
+</div>
+
+<!-- 首页 -->
+<div class="page active" id="page-home">
+  <div class="today-hero">
+    <div class="hero-greeting">今天也要好好的</div>
+    <div class="hero-date" id="heroDate"></div>
+    <div class="hero-stats">
+      <div class="hero-stat">
+        <div class="hero-stat-val" id="heroMood">—</div>
+        <div class="hero-stat-label">今日情绪</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-val" id="heroSleep">—</div>
+        <div class="hero-stat-label">睡眠</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-val" id="heroEnergy">—</div>
+        <div class="hero-stat-label">精力</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="quick-grid">
+    <div class="quick-card">
+      <div class="quick-label">饮水</div>
+      <div class="quick-val" id="homeWater">—</div>
+    </div>
+    <div class="quick-card">
+      <div class="quick-label">排便</div>
+      <div class="quick-val" id="homeBowel">—</div>
+    </div>
+    <div class="quick-card">
+      <div class="quick-label">运动</div>
+      <div class="quick-val" id="homeExercise">—</div>
+    </div>
+    <div class="quick-card">
+      <div class="quick-label">生理期</div>
+      <div class="quick-val" id="homePeriod">—</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="dot green"></span>近7天情绪</div>
+    <div class="chart-wrap" id="moodChart"></div>
+    <div style="height:20px"></div>
+  </div>
+
+  <div class="card" id="todayLogCard">
+    <div class="card-title"><span class="dot"></span>今日记录</div>
+    <div id="todayLogContent"><div class="loading">加载中…</div></div>
+  </div>
+</div>
+
+<!-- 记录页 -->
+<div class="page" id="page-log">
+  <div class="section-label">情绪状态</div>
+  <div class="card">
+    <div class="card-title"><span class="dot"></span>今天感觉怎么样？</div>
+    <div class="mood-grid" id="moodGrid">
+      <div class="mood-chip" data-val="平静"><span class="emoji">😌</span>平静</div>
+      <div class="mood-chip" data-val="开心"><span class="emoji">😊</span>开心</div>
+      <div class="mood-chip" data-val="兴奋"><span class="emoji">✨</span>兴奋</div>
+      <div class="mood-chip" data-val="还不错"><span class="emoji">🙂</span>还不错</div>
+      <div class="mood-chip" data-val="疲惫"><span class="emoji">😮‍💨</span>疲惫</div>
+      <div class="mood-chip" data-val="焦虑"><span class="emoji">😰</span>焦虑</div>
+      <div class="mood-chip" data-val="低落"><span class="emoji">😔</span>低落</div>
+      <div class="mood-chip" data-val="烦躁"><span class="emoji">😤</span>烦躁</div>
+      <div class="mood-chip" data-val="难过"><span class="emoji">😢</span>难过</div>
+      <div class="mood-chip" data-val="空白"><span class="emoji">🌫️</span>空白</div>
+      <div class="mood-chip" data-val="平淡"><span class="emoji">😶</span>平淡</div>
+      <div class="mood-chip" data-val="其他"><span class="emoji">💭</span>其他</div>
+    </div>
+    <div class="input-group">
+      <div class="input-label">多说几句（可选）</div>
+      <textarea id="moodNote" placeholder="今天发生了什么，或者现在脑子里在想什么…" rows="3"></textarea>
+    </div>
+    <div class="input-group">
+      <div class="input-label">有负面想法吗？（可选，写下来会轻一点）</div>
+      <textarea id="negativeThoughts" placeholder="不想写就跳过，没关系的…" rows="2"></textarea>
+    </div>
+  </div>
+
+  <div class="section-label">身体状况</div>
+  <div class="card">
+    <div class="card-title"><span class="dot green"></span>基础状态</div>
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">💧 饮水达标</div>
+        <div class="toggle-sub">今天喝够水了吗</div>
+      </div>
+      <label class="toggle"><input type="checkbox" id="waterOk"><span class="toggle-slider"></span></label>
+    </div>
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">🚽 排便正常</div>
+      </div>
+      <label class="toggle"><input type="checkbox" id="bowelOk" onchange="toggleBowelTime()"><span class="toggle-slider"></span></label>
+    </div>
+    <div id="bowelTimeRow" style="display:none; padding-top:10px;">
+      <div class="input-label">几点排便？</div>
+      <input type="text" id="bowelTime" placeholder="例如：早上8点、下午2点">
+    </div>
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">🌙 生理期中</div>
+      </div>
+      <label class="toggle"><input type="checkbox" id="periodOn" onchange="togglePeriodDay()"><span class="toggle-slider"></span></label>
+    </div>
+    <div id="periodDayRow" style="display:none; padding-top:10px;">
+      <div class="input-label">第几天？</div>
+      <input type="number" id="periodDay" min="1" max="10" placeholder="例如：3">
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="dot green"></span>🌙 晚间睡眠</div>
+    <div class="slider-row">
+      <div class="slider-header">
+        <div class="input-label">睡眠质量</div>
+        <div class="slider-val" id="sleepQualVal">3</div>
+      </div>
+      <input type="range" min="1" max="5" value="3" id="sleepQual" oninput="document.getElementById('sleepQualVal').textContent=this.value">
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--ink3);margin-top:4px;">
+        <span>很差</span><span>还行</span><span>很好</span>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;" class="input-group">
+      <div style="flex:1;">
+        <div class="input-label">入睡时间</div>
+        <input type="text" id="sleepStart" placeholder="例如：23:30">
+      </div>
+      <div style="flex:1;">
+        <div class="input-label">起床时间</div>
+        <input type="text" id="sleepEnd" placeholder="例如：07:00">
+      </div>
+    </div>
+    <div class="input-group">
+      <div class="input-label">睡眠备注（可选）</div>
+      <input type="text" id="sleepNote" placeholder="例如：难以入睡、容易惊醒…">
+    </div>
+    <div class="input-group">
+      <div class="input-label">🌀 梦境记录（可选）</div>
+      <textarea id="dreamNote" rows="2" placeholder="记录今晚做的梦，哪怕只是片段…"></textarea>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="dot green"></span>☀️ 午睡</div>
+    <div class="toggle-row" style="margin-bottom:12px;">
+      <div class="toggle-label">今天有午睡</div>
+      <label class="toggle"><input type="checkbox" id="napDone" onchange="toggleNap()"><span class="toggle-slider"></span></label>
+    </div>
+    <div id="napDetail" style="display:none;">
+      <div style="display:flex;gap:10px;" class="input-group">
+        <div style="flex:1;">
+          <div class="input-label">开始时间</div>
+          <input type="text" id="napStart" placeholder="例如：13:00">
+        </div>
+        <div style="flex:1;">
+          <div class="input-label">结束时间</div>
+          <input type="text" id="napEnd" placeholder="例如：13:30">
+        </div>
+      </div>
+      <div class="input-group">
+        <div class="input-label">午睡感受</div>
+        <input type="text" id="napNote" placeholder="例如：睡得很香、没睡着…">
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="dot green"></span>精力水平</div>
+    <div class="slider-row">
+      <div class="slider-header">
+        <div class="input-label">今天的精力如何</div>
+        <div class="slider-val" id="energyVal">3</div>
+      </div>
+      <input type="range" min="1" max="5" value="3" id="energyLevel" oninput="document.getElementById('energyVal').textContent=this.value">
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--ink3);margin-top:4px;">
+        <span>完全没有</span><span>一般</span><span>充沛</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-label">运动</div>
+  <div class="card">
+    <div class="card-title"><span class="dot green"></span>今天运动了吗？</div>
+    <div class="toggle-row" style="margin-bottom:12px;">
+      <div class="toggle-label">有运动</div>
+      <label class="toggle"><input type="checkbox" id="exerciseDone" onchange="toggleExercise()"><span class="toggle-slider"></span></label>
+    </div>
+    <div id="exerciseDetail" style="display:none;">
+      <div class="input-label">运动类型</div>
+      <div class="exercise-grid" id="exerciseGrid">
+        <div class="exercise-chip" data-val="散步"><span class="emoji">🚶</span>散步</div>
+        <div class="exercise-chip" data-val="跑步"><span class="emoji">🏃</span>跑步</div>
+        <div class="exercise-chip" data-val="瑜伽"><span class="emoji">🧘</span>瑜伽</div>
+        <div class="exercise-chip" data-val="骑车"><span class="emoji">🚴</span>骑车</div>
+        <div class="exercise-chip" data-val="游泳"><span class="emoji">🏊</span>游泳</div>
+        <div class="exercise-chip" data-val="力量训练"><span class="emoji">💪</span>力量训练</div>
+        <div class="exercise-chip" data-val="舞蹈"><span class="emoji">💃</span>舞蹈</div>
+        <div class="exercise-chip" data-val="拉伸"><span class="emoji">🤸</span>拉伸</div>
+        <div class="exercise-chip" data-val="其他"><span class="emoji">⚡</span>其他</div>
+      </div>
+      <div class="input-group">
+        <div class="input-label">时长（分钟）</div>
+        <input type="number" id="exerciseDuration" placeholder="例如：30">
+      </div>
+      <div class="input-group">
+        <div class="input-label">感受如何？</div>
+        <textarea id="exerciseFeeling" rows="2" placeholder="运动完的状态，酸爽还是很累…"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <button class="btn btn-primary" onclick="saveLog()" style="margin-top:8px;">保存今日记录</button>
+  <div style="height:16px"></div>
+</div>
+
+<!-- 护肤页 -->
+<div class="page" id="page-skin">
+  <div class="section-label">我的护肤品</div>
+  <div class="card">
+    <div class="card-title"><span class="dot purple"></span>在用的产品</div>
+    <div id="productList"><div class="loading">加载中…</div></div>
+  </div>
+
+  <button class="btn btn-secondary" onclick="showAddProduct()" style="margin-bottom:16px;">+ 添加新产品</button>
+
+  <div class="section-label">今日护肤记录</div>
+  <div class="card">
+    <div class="card-title"><span class="dot purple"></span>记录一次护肤</div>
+    <div class="input-group">
+      <div class="input-label">早晚</div>
+      <select id="skincareTime">
+        <option value="morning">🌅 早上</option>
+        <option value="evening">🌙 晚上</option>
+      </select>
+    </div>
+    <div class="input-group">
+      <div class="input-label">皮肤状态</div>
+      <div class="skin-grid">
+        <div class="skin-chip" data-val="状态很好"><span class="emoji">✨</span>状态很好</div>
+        <div class="skin-chip" data-val="正常"><span class="emoji">😊</span>正常</div>
+        <div class="skin-chip" data-val="有点干"><span class="emoji">🏜️</span>有点干</div>
+        <div class="skin-chip" data-val="出油"><span class="emoji">💦</span>出油</div>
+        <div class="skin-chip" data-val="有痘"><span class="emoji">😬</span>有痘</div>
+        <div class="skin-chip" data-val="泛红敏感"><span class="emoji">🔴</span>泛红敏感</div>
+      </div>
+    </div>
+    <div class="input-group">
+      <div class="input-label">感受 / 备注</div>
+      <textarea id="skincareFeeling" rows="2" placeholder="今天皮肤的状态，用了什么感受怎么样…"></textarea>
+    </div>
+    <button class="btn btn-primary" onclick="saveSkincare()">保存护肤记录</button>
+  </div>
+</div>
+
+<!-- 分析页 -->
+<div class="page" id="page-analysis">
+  <div class="section-label">情绪分析</div>
+  <div class="analysis-card">
+    <div class="analysis-title">近30天情绪分布</div>
+    <div id="moodStats"><div class="loading">加载中…</div></div>
+  </div>
+  <div class="analysis-card">
+    <div class="analysis-title">身体指标均值</div>
+    <div id="bodyStats"><div class="loading">加载中…</div></div>
+  </div>
+  <div class="analysis-card">
+    <div class="analysis-title">生理期记录</div>
+    <div id="periodStats"><div class="loading">加载中…</div></div>
+  </div>
+  <div class="analysis-card">
+    <div class="analysis-title">运动频率</div>
+    <div id="exerciseStats"><div class="loading">加载中…</div></div>
+  </div>
+</div>
+
+<!-- 添加产品模态框 -->
+<div class="modal-overlay" id="addProductModal" onclick="closeModal(event)">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">添加护肤品</div>
+    <div class="input-group">
+      <div class="input-label">产品名称 *</div>
+      <input type="text" id="newProductName" placeholder="例如：雪花秀 润雪精华">
+    </div>
+    <div class="input-group">
+      <div class="input-label">品牌</div>
+      <input type="text" id="newProductBrand" placeholder="例如：雪花秀">
+    </div>
+    <div class="input-group">
+      <div class="input-label">类型</div>
+      <select id="newProductCategory">
+        <option value="cleanser">洁面</option>
+        <option value="toner">水/爽肤水</option>
+        <option value="essence">精华</option>
+        <option value="serum">安瓶/血清</option>
+        <option value="moisturizer">面霜/乳液</option>
+        <option value="sunscreen">防晒</option>
+        <option value="mask">面膜</option>
+        <option value="eye">眼部</option>
+        <option value="other">其他</option>
+      </select>
+    </div>
+    <div class="input-group">
+      <div class="input-label">开始使用日期</div>
+      <input type="text" id="newProductStart" placeholder="例如：2025-04-01">
+    </div>
+    <button class="btn btn-primary" onclick="saveProduct()">添加</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- 底部导航 -->
+<nav class="bottom-nav">
+  <button class="nav-item active" onclick="switchPage('home', this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+      <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+      <polyline points="9 22 9 12 15 12 15 22"/>
+    </svg>
+    今日
+  </button>
+  <button class="nav-item" onclick="switchPage('log', this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+      <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5"/>
+      <path d="M17.5 2.5a2.121 2.121 0 013 3L12 14l-4 1 1-4 7.5-7.5z"/>
+    </svg>
+    记录
+  </button>
+  <button class="nav-item" onclick="switchPage('skin', this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/>
+    </svg>
+    护肤
+  </button>
+  <button class="nav-item" onclick="switchPage('analysis', this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+      <line x1="18" y1="20" x2="18" y2="10"/>
+      <line x1="12" y1="20" x2="12" y2="4"/>
+      <line x1="6" y1="20" x2="6" y2="14"/>
+    </svg>
+    分析
+  </button>
+</nav>
+
+<script>
+const SUPABASE_URL = 'https://gcpoadsmxpooiofcyfci.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdjcG9hZHNteHBvb2lvZmN5ZmNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyODIzMTksImV4cCI6MjA5Mjg1ODMxOX0.5TCVVmDlhofBivq8oRwL5Evp3_1ywV3pMB_tGLvE-tg';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const today = new Date();
+const todayStr = today.toISOString().split('T')[0];
+
+// 日期显示
+const weekDays = ['日','一','二','三','四','五','六'];
+document.getElementById('topDate').textContent = `${today.getMonth()+1}月${today.getDate()}日 周${weekDays[today.getDay()]}`;
+document.getElementById('heroDate').textContent = `${today.getMonth()+1}月${today.getDate()}日`;
+
+// 页面切换
+function switchPage(name, el) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  el.classList.add('active');
+  if (name === 'home') loadHome();
+  if (name === 'skin') loadSkin();
+  if (name === 'analysis') loadAnalysis();
+}
+
+// toast
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// 情绪词选择
+let selectedMood = '';
+document.querySelectorAll('.mood-chip').forEach(c => {
+  c.addEventListener('click', () => {
+    document.querySelectorAll('.mood-chip').forEach(x => x.classList.remove('selected'));
+    c.classList.add('selected');
+    selectedMood = c.dataset.val;
+  });
+});
+
+// 运动类型选择
+let selectedExercise = '';
+document.querySelectorAll('.exercise-chip').forEach(c => {
+  c.addEventListener('click', () => {
+    document.querySelectorAll('.exercise-chip').forEach(x => x.classList.remove('selected'));
+    c.classList.add('selected');
+    selectedExercise = c.dataset.val;
+  });
+});
+
+// 皮肤状态选择
+let selectedSkin = '';
+document.querySelectorAll('.skin-chip').forEach(c => {
+  c.addEventListener('click', () => {
+    document.querySelectorAll('.skin-chip').forEach(x => x.classList.remove('selected'));
+    c.classList.add('selected');
+    selectedSkin = c.dataset.val;
+  });
+});
+
+function toggleBowelTime() {
+  document.getElementById('bowelTimeRow').style.display =
+    document.getElementById('bowelOk').checked ? 'block' : 'none';
+}
+function togglePeriodDay() {
+  document.getElementById('periodDayRow').style.display =
+    document.getElementById('periodOn').checked ? 'block' : 'none';
+}
+function toggleNap() {
+  document.getElementById('napDetail').style.display =
+    document.getElementById('napDone').checked ? 'block' : 'none';
+}
+function toggleExercise() {
+  document.getElementById('exerciseDetail').style.display =
+    document.getElementById('exerciseDone').checked ? 'block' : 'none';
+}
+
+// 保存每日记录
+async function saveLog() {
+  const logData = {
+    date: todayStr,
+    mood_word: selectedMood || null,
+    mood_note: document.getElementById('moodNote').value || null,
+    negative_thoughts: document.getElementById('negativeThoughts').value || null,
+    water_ok: document.getElementById('waterOk').checked,
+    bowel_ok: document.getElementById('bowelOk').checked,
+    bowel_time: document.getElementById('bowelOk').checked ? (document.getElementById('bowelTime').value || null) : null,
+    period: document.getElementById('periodOn').checked,
+    period_day: document.getElementById('periodOn').checked ? parseInt(document.getElementById('periodDay').value) || null : null,
+    sleep_quality: parseInt(document.getElementById('sleepQual').value),
+    sleep_start: document.getElementById('sleepStart').value || null,
+    sleep_end: document.getElementById('sleepEnd').value || null,
+    sleep_note: document.getElementById('sleepNote').value || null,
+    dream_note: document.getElementById('dreamNote').value || null,
+    nap: document.getElementById('napDone').checked,
+    nap_start: document.getElementById('napDone').checked ? (document.getElementById('napStart').value || null) : null,
+    nap_end: document.getElementById('napDone').checked ? (document.getElementById('napEnd').value || null) : null,
+    nap_note: document.getElementById('napDone').checked ? (document.getElementById('napNote').value || null) : null,
+    energy_level: parseInt(document.getElementById('energyLevel').value),
+  };
+
+  const { error } = await sb.from('daily_logs').upsert(logData, { onConflict: 'date' });
+  if (error) { showToast('保存失败：' + error.message); return; }
+
+  // 保存运动
+  if (document.getElementById('exerciseDone').checked && selectedExercise) {
+    const exData = {
+      date: todayStr,
+      exercise_type: selectedExercise,
+      duration_minutes: parseInt(document.getElementById('exerciseDuration').value) || null,
+      feeling: document.getElementById('exerciseFeeling').value || null,
+    };
+    await sb.from('exercise_logs').insert(exData);
+  }
+
+  showToast('✓ 记录保存成功');
+  setTimeout(() => { switchPage('home', document.querySelector('.nav-item')); }, 800);
+}
+
+// 保存护肤记录
+async function saveSkincare() {
+  const data = {
+    date: todayStr,
+    time_of_day: document.getElementById('skincareTime').value,
+    skin_condition: selectedSkin || null,
+    feeling: document.getElementById('skincareFeeling').value || null,
+  };
+  const { error } = await sb.from('skincare_logs').insert(data);
+  if (error) { showToast('保存失败'); return; }
+  showToast('✓ 护肤记录已保存');
+  document.getElementById('skincareFeeling').value = '';
+  selectedSkin = '';
+  document.querySelectorAll('.skin-chip').forEach(x => x.classList.remove('selected'));
+}
+
+// 添加产品
+function showAddProduct() {
+  document.getElementById('addProductModal').classList.add('show');
+  // 设置默认日期
+  document.getElementById('newProductStart').value = todayStr;
+}
+function closeModal(e) {
+  if (e.target === e.currentTarget) e.currentTarget.classList.remove('show');
+}
+async function saveProduct() {
+  const name = document.getElementById('newProductName').value.trim();
+  if (!name) { showToast('请填写产品名称'); return; }
+  const data = {
+    name,
+    brand: document.getElementById('newProductBrand').value || null,
+    category: document.getElementById('newProductCategory').value,
+    start_date: document.getElementById('newProductStart').value || todayStr,
+    status: 'active',
+  };
+  const { error } = await sb.from('skincare_products').insert(data);
+  if (error) { showToast('添加失败'); return; }
+  document.getElementById('addProductModal').classList.remove('show');
+  showToast('✓ 产品已添加');
+  loadSkin();
+}
+
+// 计算使用天数
+function daysSince(dateStr) {
+  const d = new Date(dateStr);
+  const diff = Math.floor((today - d) / (1000 * 60 * 60 * 24));
+  return diff;
+}
+
+const categoryEmoji = { cleanser:'🫧', toner:'💧', essence:'✨', serum:'💉', moisturizer:'🫶', sunscreen:'☀️', mask:'🎭', eye:'👁️', other:'🧴' };
+const categoryName = { cleanser:'洁面', toner:'水', essence:'精华', serum:'安瓶', moisturizer:'面霜', sunscreen:'防晒', mask:'面膜', eye:'眼部', other:'其他' };
+
+// 加载护肤品列表
+async function loadSkin() {
+  const { data, error } = await sb.from('skincare_products').select('*').eq('status', 'active').order('start_date');
+  const el = document.getElementById('productList');
+  if (error || !data || data.length === 0) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">🧴</div><p>还没有添加护肤品<br>点下方按钮开始记录</p></div>';
+    return;
+  }
+  el.innerHTML = data.map(p => `
+    <div class="product-item">
+      <div class="product-icon">${categoryEmoji[p.category] || '🧴'}</div>
+      <div class="product-info">
+        <div class="product-name">${p.name}</div>
+        <div class="product-meta">${p.brand ? p.brand + ' · ' : ''}${categoryName[p.category] || p.category}</div>
+        <div class="product-meta">从 ${p.start_date} 开始</div>
+      </div>
+      <div>
+        <div class="product-days">${daysSince(p.start_date)}</div>
+        <div class="product-days-label">天</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// 情绪对应分数（用于图表）
+const moodScore = { '兴奋':5,'开心':4.5,'还不错':4,'平静':3.5,'平淡':3,'空白':2.5,'疲惫':2.5,'焦虑':2,'烦躁':2,'低落':1.5,'难过':1,'其他':3 };
+
+// 加载首页
+async function loadHome() {
+  // 今日记录
+  const { data: todayLog } = await sb.from('daily_logs').select('*').eq('date', todayStr).single();
+  if (todayLog) {
+    document.getElementById('heroMood').textContent = todayLog.mood_word || '—';
+    const sleepDisplay = todayLog.sleep_start && todayLog.sleep_end ? todayLog.sleep_start + '~' + todayLog.sleep_end : '—';
+    document.getElementById('heroSleep').textContent = sleepDisplay;
+    document.getElementById('heroEnergy').textContent = todayLog.energy_level ? '⭐'.repeat(todayLog.energy_level) : '—';
+    document.getElementById('homeWater').textContent = todayLog.water_ok ? '✓ 达标' : '✗ 不够';
+    document.getElementById('homeBowel').textContent = todayLog.bowel_ok ? '✓ 正常' : '—';
+    document.getElementById('homeExercise').textContent = '查看';
+    document.getElementById('homePeriod').textContent = todayLog.period ? `第${todayLog.period_day || '?'}天` : '—';
+
+    document.getElementById('todayLogContent').innerHTML = `
+      <div class="log-item">
+        <div class="log-date">情绪</div>
+        <div class="log-mood">${todayLog.mood_word || '未记录'} ${todayLog.mood_note ? '· ' + todayLog.mood_note : ''}</div>
+      </div>
+      ${todayLog.negative_thoughts ? `<div class="log-item"><div class="log-date">负面想法</div><div class="log-mood">${todayLog.negative_thoughts}</div></div>` : ''}
+      <div class="log-item">
+        <div class="log-tags">
+          <span class="log-tag ${todayLog.water_ok ? 'green' : 'red'}">💧 ${todayLog.water_ok ? '饮水达标' : '饮水不足'}</span>
+          <span class="log-tag ${todayLog.bowel_ok ? 'green' : ''}">🚽 ${todayLog.bowel_ok ? '排便正常' : '未排便'}</span>
+          <span class="log-tag">😴 睡眠${todayLog.sleep_quality}/5</span>
+          ${todayLog.period ? `<span class="log-tag" style="background:#fde8f0;color:#ab7b8f;">🌙 生理期第${todayLog.period_day || '?'}天</span>` : ''}
+        </div>
+      </div>
+    `;
+  } else {
+    document.getElementById('todayLogContent').innerHTML = '<div class="empty-state"><div class="empty-icon">📝</div><p>今天还没有记录<br>去"记录"页填一下吧</p></div>';
+  }
+
+  // 近7天情绪图表
+  const sevenDaysAgo = new Date(today);
+  sevenDaysAgo.setDate(today.getDate() - 6);
+  const { data: logs7 } = await sb.from('daily_logs').select('date, mood_word')
+    .gte('date', sevenDaysAgo.toISOString().split('T')[0]).order('date');
+
+  const chartEl = document.getElementById('moodChart');
+  chartEl.innerHTML = '';
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(today); d.setDate(today.getDate() - i);
+    const ds = d.toISOString().split('T')[0];
+    const log = logs7 ? logs7.find(l => l.date === ds) : null;
+    const score = log && log.mood_word ? (moodScore[log.mood_word] || 3) : 0;
+    const pct = score > 0 ? (score / 5 * 100) : 5;
+    const bar = document.createElement('div');
+    bar.className = 'chart-bar' + (score > 0 ? ' filled' : '');
+    bar.style.height = pct + '%';
+    bar.innerHTML = `<div class="bar-label">${d.getDate()}日</div>`;
+    bar.title = log ? (log.mood_word || '无') : '无记录';
+    chartEl.appendChild(bar);
+  }
+}
+
+// 加载分析
+async function loadAnalysis() {
+  const thirtyAgo = new Date(today); thirtyAgo.setDate(today.getDate() - 29);
+  const { data: logs } = await sb.from('daily_logs').select('*').gte('date', thirtyAgo.toISOString().split('T')[0]);
+  const { data: exLogs } = await sb.from('exercise_logs').select('*').gte('date', thirtyAgo.toISOString().split('T')[0]);
+
+  // 情绪分布
+  const moodCount = {};
+  if (logs) logs.forEach(l => { if (l.mood_word) moodCount[l.mood_word] = (moodCount[l.mood_word] || 0) + 1; });
+  const moodEl = document.getElementById('moodStats');
+  if (Object.keys(moodCount).length === 0) {
+    moodEl.innerHTML = '<div style="color:var(--ink3);font-size:13px;text-align:center;padding:12px">数据不足</div>';
+  } else {
+    const sorted = Object.entries(moodCount).sort((a,b) => b[1]-a[1]).slice(0,5);
+    moodEl.innerHTML = sorted.map(([w, c]) => `
+      <div class="stat-row"><div class="stat-name">${w}</div><div class="stat-value">${c}天</div></div>
+    `).join('');
+  }
+
+  // 身体均值
+  const bodyEl = document.getElementById('bodyStats');
+  if (!logs || logs.length === 0) {
+    bodyEl.innerHTML = '<div style="color:var(--ink3);font-size:13px;text-align:center;padding:12px">数据不足</div>';
+  } else {
+    const avgSleep = (logs.reduce((s,l) => s + (l.sleep_quality||0), 0) / logs.length).toFixed(1);
+    const avgEnergy = (logs.reduce((s,l) => s + (l.energy_level||0), 0) / logs.length).toFixed(1);
+    const waterDays = logs.filter(l => l.water_ok).length;
+    bodyEl.innerHTML = `
+      <div class="stat-row"><div class="stat-name">平均睡眠质量</div><div class="stat-value">${avgSleep}/5</div></div>
+      <div class="stat-row"><div class="stat-name">平均精力水平</div><div class="stat-value">${avgEnergy}/5</div></div>
+      <div class="stat-row"><div class="stat-name">饮水达标天数</div><div class="stat-value">${waterDays}天</div></div>
+    `;
+  }
+
+  // 生理期
+  const periodEl = document.getElementById('periodStats');
+  const periodLogs = logs ? logs.filter(l => l.period) : [];
+  periodEl.innerHTML = periodLogs.length > 0
+    ? `<div class="stat-row"><div class="stat-name">近30天生理期天数</div><div class="stat-value">${periodLogs.length}天</div></div>`
+    : '<div style="color:var(--ink3);font-size:13px;text-align:center;padding:12px">暂无记录</div>';
+
+  // 运动
+  const exEl = document.getElementById('exerciseStats');
+  if (!exLogs || exLogs.length === 0) {
+    exEl.innerHTML = '<div style="color:var(--ink3);font-size:13px;text-align:center;padding:12px">暂无运动记录</div>';
+  } else {
+    const totalMin = exLogs.reduce((s,l) => s + (l.duration_minutes||0), 0);
+    const typeCount = {};
+    exLogs.forEach(l => { typeCount[l.exercise_type] = (typeCount[l.exercise_type]||0)+1; });
+    const fav = Object.entries(typeCount).sort((a,b)=>b[1]-a[1])[0];
+    exEl.innerHTML = `
+      <div class="stat-row"><div class="stat-name">运动次数</div><div class="stat-value">${exLogs.length}次</div></div>
+      <div class="stat-row"><div class="stat-name">累计时长</div><div class="stat-value">${totalMin}分钟</div></div>
+      ${fav ? `<div class="stat-row"><div class="stat-name">最常做</div><div class="stat-value">${fav[0]}</div></div>` : ''}
+    `;
+  }
+}
+
+// 初始化
+loadHome();
+</script>
+
+<!-- 数据库初始化SQL提示（第一次使用需在Supabase执行） -->
+<!--
+CREATE TABLE daily_logs (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  date date UNIQUE NOT NULL,
+  mood_word text,
+  mood_note text,
+  negative_thoughts text,
+  water_ok boolean DEFAULT false,
+  bowel_ok boolean DEFAULT false,
+  period boolean DEFAULT false,
+  period_day int,
+  sleep_quality int,
+  sleep_hours numeric,
+  sleep_note text,
+  energy_level int,
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE TABLE exercise_logs (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  date date NOT NULL,
+  exercise_type text,
+  duration_minutes int,
+  feeling text,
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE TABLE skincare_products (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  name text NOT NULL,
+  brand text,
+  category text,
+  start_date date,
+  status text DEFAULT 'active',
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE TABLE skincare_logs (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  date date NOT NULL,
+  time_of_day text,
+  skin_condition text,
+  feeling text,
+  created_at timestamptz DEFAULT now()
+);
+
+ALTER TABLE daily_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE exercise_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE skincare_products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE skincare_logs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "allow all" ON daily_logs FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "allow all" ON exercise_logs FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "allow all" ON skincare_products FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "allow all" ON skincare_logs FOR ALL USING (true) WITH CHECK (true);
+-->
+</body>
+</html>
