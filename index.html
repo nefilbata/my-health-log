@@ -808,6 +808,7 @@ function switchPage(name, el) {
   document.getElementById('page-' + name).classList.add('active');
   el.classList.add('active');
   if (name === 'home') loadHome();
+  if (name === 'log') loadLogForm();
   if (name === 'skin') loadSkin();
   if (name === 'analysis') loadAnalysis();
 }
@@ -866,6 +867,75 @@ function toggleExercise() {
     document.getElementById('exerciseDone').checked ? 'block' : 'none';
 }
 
+// 加载今日已有记录回填表单
+async function loadLogForm() {
+  const { data } = await sb.from('daily_logs').select('*').eq('date', todayStr).single();
+  const btn = document.querySelector('#page-log .btn-primary');
+  if (data) {
+    // 回填情绪
+    if (data.mood_word) {
+      selectedMood = data.mood_word;
+      document.querySelectorAll('.mood-chip').forEach(c => {
+        c.classList.toggle('selected', c.dataset.val === data.mood_word);
+      });
+    }
+    if (data.mood_note) document.getElementById('moodNote').value = data.mood_note;
+    if (data.negative_thoughts) document.getElementById('negativeThoughts').value = data.negative_thoughts;
+    // 回填身体
+    document.getElementById('waterOk').checked = data.water_ok || false;
+    document.getElementById('bowelOk').checked = data.bowel_ok || false;
+    if (data.bowel_ok) {
+      document.getElementById('bowelTimeRow').style.display = 'block';
+      if (data.bowel_time) document.getElementById('bowelTime').value = data.bowel_time;
+    }
+    document.getElementById('periodOn').checked = data.period || false;
+    if (data.period) {
+      document.getElementById('periodDayRow').style.display = 'block';
+      if (data.period_day) document.getElementById('periodDay').value = data.period_day;
+    }
+    // 回填睡眠
+    if (data.sleep_quality) {
+      document.getElementById('sleepQual').value = data.sleep_quality;
+      document.getElementById('sleepQualVal').textContent = data.sleep_quality;
+    }
+    if (data.sleep_start) document.getElementById('sleepStart').value = data.sleep_start;
+    if (data.sleep_end) document.getElementById('sleepEnd').value = data.sleep_end;
+    if (data.sleep_note) document.getElementById('sleepNote').value = data.sleep_note;
+    if (data.dream_note) document.getElementById('dreamNote').value = data.dream_note;
+    // 回填午睡
+    if (data.nap) {
+      document.getElementById('napDone').checked = true;
+      document.getElementById('napDetail').style.display = 'block';
+      if (data.nap_start) document.getElementById('napStart').value = data.nap_start;
+      if (data.nap_end) document.getElementById('napEnd').value = data.nap_end;
+      if (data.nap_note) document.getElementById('napNote').value = data.nap_note;
+    }
+    // 回填精力
+    if (data.energy_level) {
+      document.getElementById('energyLevel').value = data.energy_level;
+      document.getElementById('energyVal').textContent = data.energy_level;
+    }
+    if (btn) btn.textContent = '更新今日记录';
+  } else {
+    if (btn) btn.textContent = '保存今日记录';
+  }
+
+  // 回填运动（取今天第一条）
+  const { data: ex } = await sb.from('exercise_logs').select('*').eq('date', todayStr).limit(1).single();
+  if (ex) {
+    document.getElementById('exerciseDone').checked = true;
+    document.getElementById('exerciseDetail').style.display = 'block';
+    if (ex.exercise_type) {
+      selectedExercise = ex.exercise_type;
+      document.querySelectorAll('.exercise-chip').forEach(c => {
+        c.classList.toggle('selected', c.dataset.val === ex.exercise_type);
+      });
+    }
+    if (ex.duration_minutes) document.getElementById('exerciseDuration').value = ex.duration_minutes;
+    if (ex.feeling) document.getElementById('exerciseFeeling').value = ex.feeling;
+  }
+}
+
 // 保存每日记录
 async function saveLog() {
   const logData = {
@@ -893,7 +963,7 @@ async function saveLog() {
   const { error } = await sb.from('daily_logs').upsert(logData, { onConflict: 'date' });
   if (error) { showToast('保存失败：' + error.message); return; }
 
-  // 保存运动
+  // 保存运动（每次都新增一条，支持多项运动）
   if (document.getElementById('exerciseDone').checked && selectedExercise) {
     const exData = {
       date: todayStr,
