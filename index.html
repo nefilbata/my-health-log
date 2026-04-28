@@ -2260,10 +2260,10 @@ async function handleSignup() {
 
   btn.disabled = true; btn.textContent = '注册中…';
 
-  // 1. 验证邀请码
+  // 1. 先做邀请码预检（早失败，避免无谓注册）
   const { data: invite, error: invErr } = await sb
     .from('invite_codes')
-    .select('*')
+    .select('code')
     .eq('code', inviteCode)
     .eq('used', false)
     .maybeSingle();
@@ -2274,7 +2274,7 @@ async function handleSignup() {
     errEl.classList.add('show'); return;
   }
 
-  // 2. 注册
+  // 2. 注册账号
   const { data, error } = await sb.auth.signUp({ email, password });
 
   if (error) {
@@ -2289,37 +2289,23 @@ async function handleSignup() {
     errEl.classList.add('show'); return;
   }
 
-// 3. 标记邀请码已使用（用 RPC 调数据库函数，绕过 RLS 也能稳定写入）
+  // 3. 原子地消耗邀请码（用 RPC,失败会抛错）
   const { data: consumed, error: consumeErr } = await sb.rpc('consume_invite_code', {
     p_code: inviteCode,
     p_user_id: data.user.id
   });
 
   if (consumeErr || !consumed) {
-    // 标记失败：账号已经在 auth 创建了，但邀请码没消耗，存在被复用风险
-    // 提示用户并联系管理员
+    // 邀请码消耗失败：账号已创建但码没标记，必须告知用户并阻断进入
+    // (无法在前端删除 auth user,需要管理员手动清理)
     btn.disabled = false; btn.textContent = '注 册';
-    errEl.textContent = '注册成功但邀请码状态异常，请联系管理员';
+    errEl.textContent = '注册异常,请联系管理员清理账号: ' + email;
     errEl.classList.add('show');
-    // 不 return，继续走登录流程
+    await sb.auth.signOut(); // 防止以已注册身份进入
+    return;
   }
 
-  const { data: updRows, error: updErr } = await sb
-    .from('invite_codes')
-    .update({
-      used: true,
-      used_by: data.user.id,
-      used_at: new Date().toISOString()
-    })
-    .eq('code', inviteCode)
-    .select();
-
-  if (updErr || !updRows || updRows.length === 0) {
-    console.error('邀请码标记失败', { updErr, rows: updRows });
-    alert('注册成功,但邀请码状态未同步,请截图给管理员');
-  }
-
-  // 4. 如果有 session,直接进入(取决于 Supabase 是否要求邮件验证)
+  // 4. 一切正常,根据是否要邮箱验证决定下一步
   if (data.session) {
     currentUserId = data.user.id;
     document.getElementById('drawerUserEmail').textContent = data.user.email || '';
@@ -2333,7 +2319,7 @@ async function handleSignup() {
     errEl.style.background = 'var(--warm-pale)';
     errEl.style.color = 'var(--warm)';
     errEl.classList.add('show');
-    toggleAuthMode(); // 切回登录模式
+    toggleAuthMode();
   }
 }
 
